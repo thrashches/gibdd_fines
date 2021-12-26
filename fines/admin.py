@@ -6,16 +6,17 @@ from django.contrib import admin
 from django.http import HttpResponseRedirect
 from django.urls import path
 
-from .models import Driver, Fine, Car, Profile
+from .models import Driver, Fine, Car, Profile, Report, DriverOnCar
 from django.contrib.auth.admin import UserAdmin
 from django.conf import settings
+
 
 # Register your models here.
 
 admin.site.site_header = 'Штрафы'
 admin.site.register(Driver)
-
-
+admin.site.register(Report)
+admin.site.register(DriverOnCar)
 # admin.site.register(Car)
 # admin.site.register(Fine)
 
@@ -71,7 +72,7 @@ class ProfileAdmin(UserAdmin):
 
 @admin.register(Fine)
 class FineAdmin(admin.ModelAdmin):
-    list_display = ['__str__', 'car', 'pay_status']
+    list_display = ['__str__', 'car', 'driver', 'pay_status']
     search_fields = ['accident_number']
     list_filter = ['car', 'pay_status']
     change_list_template = "update_fines.html"
@@ -98,16 +99,19 @@ class FineAdmin(admin.ModelAdmin):
         data = response.json()
         # with open('fines.json', 'w') as f:
         #     json.dump(data, f)
-
+        unpayed_old = [fine.accident_number for fine in Fine.objects.filter(pay_status=False)]
+        unpayed_new = []
         cars = list(data['data']['auto_list'])
         for car in cars:
             print(car)
             car_dict = data['data']['auto_list'][car]
             car_obj = Car.objects.filter(auto_id=data['data']['auto_list'][car]['auto_id'])
             offenses = list(car_dict['offense_list'].keys())
+
+
             for offence in offenses:
                 print(car_dict["offense_list"][offence])
-
+                unpayed_new.append(car_dict["offense_list"][offence]['bill_id'])
                 offense_dict = {
                     'accident_number': car_dict["offense_list"][offence]['bill_id'],
                     'price': int(float(car_dict["offense_list"][offence]['pay_bill_amount'])),
@@ -128,5 +132,12 @@ class FineAdmin(admin.ModelAdmin):
                 fine, created = Fine.objects.get_or_create(accident_number=offense_dict['accident_number'])
                 Fine.objects.filter(id=fine.id).update(**offense_dict)
 
+        # Закомментить 3 строки снизу как разберешься с поддержкой отсюда
+        for fine in unpayed_old:
+            if fine not in unpayed_new:
+                Fine.objects.filter(accident_number=fine).update(pay_status=True)
+        # До сюда
         # print(data)
+        print('old', unpayed_old)
+        print('new', unpayed_new)
         return HttpResponseRedirect("../")
